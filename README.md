@@ -14,6 +14,5 @@ To be covered (all from scratch), sorted by difficulty.
 - [ ] Vanilla RNNs (might skip)
 - [ ] Understanding LSTMs/GRUs
 - [ ] Transformers
-- [ ] Attention
 - [ ] GPT
 - [ ] Diffusion models (probably the hardest)
