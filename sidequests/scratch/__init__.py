@@ -65,6 +65,9 @@ class Adam(Optimizer):
         self.m = {}
         self.v = {}
 
+        # AdamW only
+        self.weight_decay = None
+
     def __call__(self, params: List[torch.Tensor]):
         # Note: t should increase everytime we optimize through Adam
         # and does not depend on the batching strategy
@@ -78,6 +81,10 @@ class Adam(Optimizer):
             grad = param.grad
 
             if grad is not None:
+                # Weight decay (AdamW specific)
+                if self.weight_decay is not None:
+                    param.data -= self.lr * self.weight_decay * param.data
+
                 # Biased first and second moment estimates
                 self.m[param] = self.beta1 * self.m[param] + (1 - self.beta1) * grad
                 self.v[param] = self.beta2 * self.v[param] + (1 - self.beta2) * (
@@ -88,10 +95,20 @@ class Adam(Optimizer):
                 m_hat = self.m[param] / (1 - self.beta1**self.t)
                 v_hat = self.v[param] / (1 - self.beta2**self.t)
 
-                param.data -= self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
+                param.data += -1 * self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
 
 
-# TODO: AdamW
+class AdamW(Adam):
+    def __init__(
+        self,
+        lr: float,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        eps: float = 1e-8,
+        weight_decay: float = 0.01,
+    ):
+        super().__init__(lr, beta1, beta2, eps)
+        self.weight_decay = weight_decay
 
 
 class LinearLayer:
@@ -151,7 +168,6 @@ class MLP:
                 self.optimizer(self.params())
 
         print(f"{i+1}.. Loss {loss.item()}")
-        return self
 
     def params(self) -> List[torch.Tensor]:
         params = []
