@@ -82,7 +82,27 @@ class Adam(Optimizer):
 
             if grad is not None:
                 # Weight decay (AdamW specific)
+                # Note: WEIGHT DECAY IS NOT L2 REGULARIZATION (https://arxiv.org/abs/1711.05101)
+                #                    ^^^^^^
+
+                # Weight decay is defined in the paper as
+                # w <- (1 - d) * w - k*∇L so roughly.. wi <- (1 - d) * wi - k*dL/dwi which is very intuitive
+                # and after permutting the terms, then cleaning up the scalars... it is also equivalent to
+                # w <- w - n*(∇L + m*wi)
+                # but in our case, we decouple the decay step from the update
+                # w <- w - n*m*w
+                # w <- w - n*∇L (for AdamW replace ∇L by the boosted Adam grad)
+
+                # Ln regularizations are terms added DIRECTLY onto the loss so that it stays within the boundaries of whatever vector norm-ish it refers to.
+                # The consensus confusion happens because L2 reg is mathematically equivalent (by a scalar bit*) to weight decay in standard SGD!
+                # 
+                # L2 norm by def is euclidean norm: L <- L + k* Σ w_i²
+                # then after doing the math, it basically folds into something like (∇L + m*wi)
+                # for AdamW it is not that! it is (adamthingy + m*wi) + decoupling of the learned lr!
+                # (notice the lr)
+
                 if self.weight_decay is not None:
+                    # Weight decay just so happens to work fairly well with Adam (now AdamW)
                     param.data -= self.lr * self.weight_decay * param.data
 
                 # Biased first and second moment estimates
@@ -97,6 +117,8 @@ class Adam(Optimizer):
 
                 param.data += -1 * self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
 
+# TODO: BatchNorm
+# TODO: LayerNorm
 
 class AdamW(Adam):
     def __init__(
