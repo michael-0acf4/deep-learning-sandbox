@@ -4,6 +4,8 @@ Yet another Deep Learning Library (YaDLL)
 
 from typing import List
 import torch
+import torch.nn.functional as F
+
 import math
 
 
@@ -36,7 +38,6 @@ class LossCriterion:
 class MSE(LossCriterion):
     def __call__(self, hs: torch.Tensor, ys: torch.Tensor) -> torch.Tensor:
         return torch.sum((hs - ys) ** 2) / hs.numel()
-
 
 # Optimizers
 class Optimizer:
@@ -95,7 +96,7 @@ class Adam(Optimizer):
 
                 # Ln regularizations are terms added DIRECTLY onto the loss so that it stays within the boundaries of whatever vector norm-ish it refers to.
                 # The consensus confusion happens because L2 reg is mathematically equivalent (by a scalar bit*) to weight decay in standard SGD!
-                # 
+                #
                 # L2 norm by def is euclidean norm: L <- L + k* Σ w_i²
                 # then after doing the math, it basically folds into something like (∇L + m*wi)
                 # for AdamW it is not that! it is (adamthingy + m*wi) + decoupling of the learned lr!
@@ -117,8 +118,10 @@ class Adam(Optimizer):
 
                 param.data += -1 * self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
 
+
 # TODO: BatchNorm
 # TODO: LayerNorm
+
 
 class AdamW(Adam):
     def __init__(
@@ -201,3 +204,78 @@ class MLP:
     def reset(self):
         for p in self.params():
             p.grad = None
+
+
+class Conv2D:
+    def __init__(
+        self,
+        n_chan: int,  # input channels (e.g. for RGB that would be 3)
+        n_ker: int,  # output channels, each channel encodes a kernel that can exrtract a feature
+        ker_dim: int,
+        stride: int | torch.SymInt = 1,  # offset
+        padding: (
+            int | str
+        ) = "same",  # padding is computed so that we keep the original dim
+    ):
+        # (K, C, D, D)
+        self.kernels = torch.rand(
+            (n_ker, n_chan, ker_dim, ker_dim), requires_grad=True, dtype=torch.float32
+        )
+        self.bias = torch.rand(n_ker, requires_grad=True)  # One bias per kernel
+
+        self.stride = stride  # kernel stride this amount pixel at a time (i.e. skip)
+        self.padding = padding  # pad original image
+
+    def forward(self, x_batch: torch.Tensor) -> torch.Tensor:
+        # x_batch -> (N, C, W, H)
+        # conv    -> (K, C, D, D)
+        # out     -> (N, K, 1 + (W + 2P - D) / S, 1 + (H + 2P - D) / S)
+        assert x_batch.ndimension() == 4
+        # equiv. return conv(x) + bias
+        return F.conv2d(x_batch, self.kernels, self.bias, self.stride, self.padding)
+
+
+class DownSampler2D:
+    def __init__(
+        self,
+        ker_dim: int,  # will encode a square window that will glide through the input
+        stride: int | torch.SymInt = 1,
+        padding: int | None = None,
+    ):
+        self.kernel_dim = ker_dim
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, conv: torch.Tensor) -> torch.Tensor:
+        """
+        `conv: (N_batch, K_out_chan, W', H')`
+        """
+        raise Exception("unimplemented")
+
+
+class MaxPool2D(DownSampler2D):
+    def __init__(
+        self,
+        ker_dim: int,
+        stride: int | torch.SymInt = 1,
+        padding: int | None = None,
+    ):
+        super().__init__(ker_dim, stride, padding)
+
+    def forward(self, conv: torch.Tensor) -> torch.Tensor:
+        assert conv.ndimension() == 4
+        return F.max_pool2d(conv, self.kernel_dim, self.stride, self.padding)
+
+
+class AvgPool2D(DownSampler2D):
+    def __init__(
+        self,
+        ker_dim: int,
+        stride: int | torch.SymInt = 1,
+        padding: int | None = None,
+    ):
+        super().__init__(ker_dim, stride, padding)
+
+    def forward(self, conv: torch.Tensor) -> torch.Tensor:
+        assert conv.ndimension() == 4
+        return F.avg_pool2d(conv, self.kernel_dim, self.stride, self.padding)

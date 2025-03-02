@@ -1,6 +1,6 @@
 # Deep Learning sandbox/playground.
 
-Continuation of [my old autograd](https://github.com/michael-0acf4/auto-diff-playground), everything else is pretty much efficiency hence I use Pytorch, would probably also rewrite [word2vec](https://github.com/michael-0acf4/yw2v) in Pytorch.
+Continuation of [my old autograd](https://github.com/michael-0acf4/auto-diff-playground). Everything else is pretty much about efficiency, hence the use of Pytorch, would probably also rewrite [word2vec](https://github.com/michael-0acf4/yw2v) in Pytorch.
 
 
 To be covered (all from scratch), sorted by difficulty.
