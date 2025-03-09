@@ -8,11 +8,12 @@ To be covered (all from scratch), sorted by difficulty.
 - [x] Pytorch and its autograd API
 - [x] Basic stacked linear layers
 - [x] CNNs
-- [ ] Transformers
+- [ ] Attention
     - [ ] Self-attention
     - [ ] Cross-attention
     - [ ] Multihead attention
     - [ ] Flash attention
+- [ ] Transformers + Attention
     - [ ] Vision Transformers (side quest, might skip)
 - [ ] Vanilla RNNs (might skip)
 - [ ] Understanding LSTMs/GRUs
