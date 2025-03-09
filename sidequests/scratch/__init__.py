@@ -39,6 +39,12 @@ class MSE(LossCriterion):
     def __call__(self, hs: torch.Tensor, ys: torch.Tensor) -> torch.Tensor:
         return torch.sum((hs - ys) ** 2) / hs.numel()
 
+
+class CrossEntropy(LossCriterion):
+    def __call__(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return F.cross_entropy(logits, target)
+
+
 # Optimizers
 class Optimizer:
     def __call__(self, params: List[torch.Tensor]):
@@ -123,6 +129,15 @@ class Adam(Optimizer):
 # TODO: LayerNorm
 
 
+class DifferentiableModule:
+    def reset(self):
+        for p in self.params():
+            p.grad = None
+
+    def params() -> List[torch.Tensor]:
+        raise Exception("Please at least return an empty list")
+
+
 class AdamW(Adam):
     def __init__(
         self,
@@ -136,22 +151,23 @@ class AdamW(Adam):
         self.weight_decay = weight_decay
 
 
-class LinearLayer:
+class LinearLayer(DifferentiableModule):
     def __init__(self, inp: int, out: int):
         gain = math.sqrt(2 / (inp + out))
-
         self.w = torch.empty(out, inp, requires_grad=True, dtype=torch.float32)
         torch.nn.init.xavier_uniform_(self.w, gain)
 
-        self.b = torch.rand(out, 1, requires_grad=True, dtype=torch.float32)
-        torch.nn.init.xavier_uniform_(self.w, gain)
+        self.b = torch.rand(out, requires_grad=True, dtype=torch.float32)
 
-    def forward(self, x):
-        # (N, I) . (I, 1) + (N, 1) = (N, 1)
-        return self.w @ x + self.b
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        #  (.., I, 1) .  (.., N, I)^T + (.., N, 1) = (.., N, 1)
+        return x @ self.w.T + self.b
+
+    def params(self):
+        return [self.w, self.b]
 
 
-class MLP:
+class MLP(DifferentiableModule):
     def __init__(
         self,
         nout: int,
@@ -183,7 +199,7 @@ class MLP:
         for i in range(epoch):
             self.reset()
 
-            outputs = torch.cat([self.forward(x.view(len(x), 1)) for x in xs])
+            outputs = torch.cat([self.forward(x.view(1, x.numel())) for x in xs])
             loss = self.criterion(outputs, ys)
 
             self.losses.append(loss.item())
@@ -197,13 +213,10 @@ class MLP:
     def params(self) -> List[torch.Tensor]:
         params = []
         for layer in self.layers:
-            if isinstance(layer, LinearLayer):
-                params += [layer.w, layer.b]
-        return params
+            if isinstance(layer, DifferentiableModule):
+                params += layer.params()
 
-    def reset(self):
-        for p in self.params():
-            p.grad = None
+        return params
 
 
 class Conv2D:
@@ -213,18 +226,20 @@ class Conv2D:
         n_ker: int,  # output channels, each channel encodes a kernel that can exrtract a feature
         ker_dim: int,
         stride: int | torch.SymInt = 1,  # offset
-        padding: (
-            int | str
-        ) = "same",  # padding is computed so that we keep the original dim
+        padding: int = 0,  # how many extra 0 value rows/cols to add in all directions
     ):
         # (K, C, D, D)
         self.kernels = torch.rand(
             (n_ker, n_chan, ker_dim, ker_dim), requires_grad=True, dtype=torch.float32
         )
-        self.bias = torch.rand(n_ker, requires_grad=True)  # One bias per kernel
+        # Var(W) = 1 / inp size
+        torch.nn.init.kaiming_normal_(self.kernels, nonlinearity="leaky_relu")
 
-        self.stride = stride  # kernel stride this amount pixel at a time (i.e. skip)
-        self.padding = padding  # pad original image
+        self.bias = torch.rand(n_ker, requires_grad=True)  # One bias per kernel
+        torch.nn.init.normal_(self.bias, mean=0, std=0.01)
+
+        self.stride = stride
+        self.padding = padding
 
     def forward(self, x_batch: torch.Tensor) -> torch.Tensor:
         # x_batch -> (N, C, W, H)
@@ -232,7 +247,12 @@ class Conv2D:
         # out     -> (N, K, 1 + (W + 2P - D) / S, 1 + (H + 2P - D) / S)
         assert x_batch.ndimension() == 4
         # equiv. return conv(x) + bias
-        return F.conv2d(x_batch, self.kernels, self.bias, self.stride, self.padding)
+        return F.conv2d(
+            x_batch, self.kernels, self.bias, stride=self.stride, padding=self.padding
+        )
+
+    def params(self):
+        return [self.kernels, self.bias]
 
 
 class DownSampler2D:
@@ -240,7 +260,7 @@ class DownSampler2D:
         self,
         ker_dim: int,  # will encode a square window that will glide through the input
         stride: int | torch.SymInt = 1,
-        padding: int | None = None,
+        padding: int = 0,
     ):
         self.kernel_dim = ker_dim
         self.stride = stride
@@ -258,7 +278,7 @@ class MaxPool2D(DownSampler2D):
         self,
         ker_dim: int,
         stride: int | torch.SymInt = 1,
-        padding: int | None = None,
+        padding: int = 0,
     ):
         super().__init__(ker_dim, stride, padding)
 
