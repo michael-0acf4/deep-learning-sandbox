@@ -9,8 +9,8 @@ To be covered (all from scratch), sorted by difficulty.
 - [x] Basic stacked linear layers
 - [x] CNNs
 - [ ] Attention
-    - [ ] Self-attention
-    - [ ] Cross-attention
+    - [x] Self-attention
+    - [x] Cross-attention
     - [ ] Multihead attention
     - [ ] Flash attention
 - [ ] Transformers + Attention
