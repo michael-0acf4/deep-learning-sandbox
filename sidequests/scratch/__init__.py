@@ -32,7 +32,7 @@ class Tanh(Activation):
 # Loss functions
 class LossCriterion:
     def __call__(self, hs: torch.Tensor, ys: torch.Tensor) -> torch.Tensor:
-        raise Exception("unimplemented")
+        raise NotImplementedError
 
 
 class MSE(LossCriterion):
@@ -48,7 +48,7 @@ class CrossEntropy(LossCriterion):
 # Optimizers
 class Optimizer:
     def __call__(self, params: List[torch.Tensor]):
-        raise Exception("unimplemented")
+        raise NotImplementedError
 
 
 class SGD(Optimizer):
@@ -125,10 +125,12 @@ class Adam(Optimizer):
                 param.data += -1 * self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
 
 
-# TODO: BatchNorm
-# TODO: LayerNorm
 
+class ForwardableModule:
+    def forward(self, x: torch.Tensor):
+        raise NotImplementedError
 
+# Modules
 class DifferentiableModule:
     def reset(self):
         for p in self.params():
@@ -136,6 +138,22 @@ class DifferentiableModule:
 
     def params() -> List[torch.Tensor]:
         raise Exception("Please at least return an empty list")
+
+# Exotic layers
+# TODO: BatchNorm
+class LayerNorm(DifferentiableModule, ForwardableModule):
+    def __init__(self, embedding_dim: int):
+        self.gamma = torch.ones(embedding_dim, requires_grad=True)
+        self.beta = torch.zeros(embedding_dim, requires_grad=True)
+
+    def forward(self, x: torch.Tensor):
+        # equiv (x - mean) / std
+        mean, var = x.mean(dim=-1, keepdim=True), x.var(dim=-1, keepdim=True)
+        normalized  = (x - mean) / torch.sqrt(var + 10e-6)
+        return self.gamma * normalized + self.beta
+
+    def params(self):
+        return [self.gamma, self.beta]
 
 
 class AdamW(Adam):
@@ -151,7 +169,7 @@ class AdamW(Adam):
         self.weight_decay = weight_decay
 
 
-class LinearLayer(DifferentiableModule):
+class LinearLayer(DifferentiableModule, ForwardableModule):
     def __init__(self, inp: int, out: int):
         gain = math.sqrt(2 / (inp + out))
         self.w = torch.empty(out, inp, requires_grad=True, dtype=torch.float32)
@@ -167,7 +185,7 @@ class LinearLayer(DifferentiableModule):
         return [self.w, self.b]
 
 
-class MLP(DifferentiableModule):
+class MLP(DifferentiableModule, ForwardableModule):
     def __init__(
         self,
         nout: int,
@@ -183,7 +201,7 @@ class MLP(DifferentiableModule):
 
     def forward(self, x):
         for layer in self.layers:
-            if isinstance(layer, LinearLayer):
+            if isinstance(layer, ForwardableModule):
                 x = layer.forward(x)
             elif isinstance(layer, Activation):
                 x = layer(x)
@@ -219,7 +237,7 @@ class MLP(DifferentiableModule):
         return params
 
 
-class Conv2D:
+class Conv2D(DifferentiableModule, ForwardableModule):
     def __init__(
         self,
         n_chan: int,  # input channels (e.g. for RGB that would be 3)
@@ -255,7 +273,7 @@ class Conv2D:
         return [self.kernels, self.bias]
 
 
-class DownSampler2D:
+class DownSampler2D(ForwardableModule):
     def __init__(
         self,
         ker_dim: int,  # will encode a square window that will glide through the input
@@ -270,32 +288,16 @@ class DownSampler2D:
         """
         `conv: (N_batch, K_out_chan, W', H')`
         """
-        raise Exception("unimplemented")
+        raise NotImplementedError
 
 
-class MaxPool2D(DownSampler2D):
-    def __init__(
-        self,
-        ker_dim: int,
-        stride: int | torch.SymInt = 1,
-        padding: int = 0,
-    ):
-        super().__init__(ker_dim, stride, padding)
-
+class MaxPool2D(DownSampler2D, ForwardableModule):
     def forward(self, conv: torch.Tensor) -> torch.Tensor:
         assert conv.ndimension() == 4
         return F.max_pool2d(conv, self.kernel_dim, self.stride, self.padding)
 
 
-class AvgPool2D(DownSampler2D):
-    def __init__(
-        self,
-        ker_dim: int,
-        stride: int | torch.SymInt = 1,
-        padding: int | None = None,
-    ):
-        super().__init__(ker_dim, stride, padding)
-
+class AvgPool2D(DownSampler2D, ForwardableModule):
     def forward(self, conv: torch.Tensor) -> torch.Tensor:
         assert conv.ndimension() == 4
         return F.avg_pool2d(conv, self.kernel_dim, self.stride, self.padding)
