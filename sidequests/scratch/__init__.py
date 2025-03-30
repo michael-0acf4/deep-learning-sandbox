@@ -291,13 +291,13 @@ class DownSampler2D(ForwardableModule):
         raise NotImplementedError
 
 
-class MaxPool2D(DownSampler2D, ForwardableModule):
+class MaxPool2D(DownSampler2D):
     def forward(self, conv: torch.Tensor) -> torch.Tensor:
         assert conv.ndimension() == 4
         return F.max_pool2d(conv, self.kernel_dim, self.stride, self.padding)
 
 
-class AvgPool2D(DownSampler2D, ForwardableModule):
+class AvgPool2D(DownSampler2D):
     def forward(self, conv: torch.Tensor) -> torch.Tensor:
         assert conv.ndimension() == 4
         return F.avg_pool2d(conv, self.kernel_dim, self.stride, self.padding)
