@@ -179,7 +179,7 @@ class LinearLayer(DifferentiableModule, ForwardableModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         #  (.., I, 1) .  (.., N, I)^T + (.., N, 1) = (.., N, 1)
-        return x @ self.w.T + self.b
+        return x @ self.w.transpose(-2, -1) + self.b
 
     def params(self):
         return [self.w, self.b]
